@@ -1,7 +1,8 @@
 import streamlit as st
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
@@ -22,7 +23,7 @@ def extract_text_from_pdf(pdf_file):
         text += page.extract_text()
     return text
 
-# 벡터 스토어 생성
+# 벡터 스토어 생성 (로컬 임베딩 사용)
 @st.cache_resource
 def create_vectorstore(text):
     text_splitter = RecursiveCharacterTextSplitter(
@@ -32,9 +33,10 @@ def create_vectorstore(text):
     )
     chunks = text_splitter.split_text(text)
     
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=GEMINI_API_KEY
+    # HuggingFace 로컬 임베딩 (무료, API 제한 없음)
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={'device': 'cpu'}
     )
     
     vectorstore = FAISS.from_texts(chunks, embeddings)
@@ -65,9 +67,9 @@ Chat History: {chat_history}
     )
     
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.5-flash",
         google_api_key=GEMINI_API_KEY,
-        temperature=0.1,  # 낮은 temperature로 환각 방지
+        temperature=0.1,
         convert_system_message_to_human=True
     )
     
@@ -81,7 +83,7 @@ Chat History: {chat_history}
         llm=llm,
         retriever=vectorstore.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 4}  # 더 많은 문맥 제공
+            search_kwargs={"k": 4}
         ),
         memory=memory,
         return_source_documents=True,
@@ -92,7 +94,7 @@ Chat History: {chat_history}
 
 # 메인 UI
 st.title("📚 PDF 기반 AI 챗봇")
-st.markdown("**Gemini 2.0 Flash** 모델 | 문서 내용만 참조하여 답변합니다")
+st.markdown("**Gemini 2.5 Flash** | 로컬 임베딩으로 무료 무제한 사용")
 
 # 사이드바 - 파일 업로드
 with st.sidebar:
@@ -107,7 +109,7 @@ with st.sidebar:
     use_default = st.checkbox("기본 test.pdf 사용", value=False)
     
     if st.button("문서 처리 시작", type="primary"):
-        with st.spinner("문서를 분석 중입니다..."):
+        with st.spinner("문서를 분석 중입니다... (첫 실행 시 임베딩 모델 다운로드)"):
             try:
                 # 파일 선택
                 if use_default and os.path.exists("test.pdf"):
@@ -197,11 +199,13 @@ st.sidebar.info("""
 3. 채팅창에서 질문 입력
 
 **특징:**
+- 로컬 임베딩 (무료, 무제한)
 - 문서 내용만 참조하여 답변
-- 문서에 없는 정보는 "모른다"고 답변
-- 환각(Hallucination) 방지
+- Gemini 2.0 Flash로 답변 생성
 
-**모델:** Gemini 2.0 Flash Experimental
+**모델:**
+- 임베딩: all-MiniLM-L6-v2 (로컬)
+- 생성: Gemini 2.5 Flash
 """)
 
 # 예시 질문
